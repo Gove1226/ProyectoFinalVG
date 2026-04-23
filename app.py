@@ -154,12 +154,12 @@ with col_ctrl:
         "Contaminante", list(POLLUTANT_LABELS.keys()),
         format_func=lambda x: POLLUTANT_LABELS[x], key="s1_poll"
     )
-    available_years = sorted(daily["año"].unique(), reverse=True)
+    available_years = sorted(daily["anio"].unique(), reverse=True)
     year_s1 = st.selectbox("Año", available_years, key="s1_year")
     st.caption(f"Mostrando: {POLLUTANT_DESC[poll_s1]}")
 
 ranking = (
-    daily[daily["año"] == year_s1]
+    daily[daily["anio"] == year_s1]
     .groupby("ciudad")[poll_s1]
     .mean()
     .reset_index()
@@ -299,7 +299,7 @@ with col2:
         format_func=lambda x: POLLUTANT_LABELS[x], key="s3_poll"
     )
 with col3:
-    all_years = sorted(monthly["año"].unique())
+    all_years = sorted(monthly["anio"].unique())
     year_range = st.select_slider(
         "Rango de años", options=all_years,
         value=(all_years[0], all_years[-1]), key="s3_years"
@@ -310,8 +310,8 @@ if not cities_s3:
 else:
     mdf = monthly[
         monthly["ciudad"].isin(cities_s3) &
-        (monthly["año"] >= year_range[0]) &
-        (monthly["año"] <= year_range[1])
+        (monthly["anio"] >= year_range[0]) &
+        (monthly["anio"] <= year_range[1])
     ]
 
     fig3 = px.line(

@@ -237,18 +237,18 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     log.info(f"Paso 5 — Filas con >3 contaminantes NaN eliminadas: {n_before - len(df)}")
 
     # 6. Columnas temporales derivadas
-    df["año"] = df["fecha_hora"].dt.year
+    df["anio"] = df["fecha_hora"].dt.year
     df["mes"] = df["fecha_hora"].dt.month
     df["dia_semana"] = df["fecha_hora"].dt.dayofweek          # 0 = lunes
     df["nombre_dia"] = df["fecha_hora"].dt.day_name()         # English (para indexado)
     df["hora"] = df["fecha_hora"].dt.hour
     df["fecha"] = df["fecha_hora"].dt.normalize()
     df["semana"] = df["fecha_hora"].dt.isocalendar().week.astype(int)
-    df["estacion_año"] = df["mes"].map({
+    df["estacion_anio"] = df["mes"].map({
         12: "Invierno", 1: "Invierno", 2: "Invierno",
         3: "Primavera", 4: "Primavera", 5: "Primavera",
         6: "Verano", 7: "Verano", 8: "Verano",
-        9: "Otoño", 10: "Otoño", 11: "Otoño",
+        9: "Otono", 10: "Otono", 11: "Otono",
     })
 
     log.info(f"Limpieza completada. Filas resultantes: {len(df):,}")
@@ -270,8 +270,8 @@ def build_aggregates(df: pd.DataFrame):
     daily = (
         df.groupby(
             ["ciudad", "estado", "lat", "lon",
-             "fecha", "año", "mes", "dia_semana",
-             "nombre_dia", "semana", "estacion_año"]
+             "fecha", "anio", "mes", "dia_semana",
+             "nombre_dia", "semana", "estacion_anio"]
         )[poll_cols]
         .mean()
         .reset_index()
@@ -286,12 +286,12 @@ def build_aggregates(df: pd.DataFrame):
 
     # Serie mensual
     monthly = (
-        df.groupby(["ciudad", "año", "mes"])[poll_cols]
+        df.groupby(["ciudad", "anio", "mes"])[poll_cols]
         .mean()
         .reset_index()
     )
     monthly["fecha_mes"] = pd.to_datetime(
-        monthly["año"].astype(str) + "-" +
+        monthly["anio"].astype(str) + "-" +
         monthly["mes"].astype(str).str.zfill(2) + "-01"
     )
 
