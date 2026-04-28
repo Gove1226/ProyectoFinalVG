@@ -55,16 +55,25 @@ DAY_ES = {
     "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo",
 }
 
+MONTH_NAMES_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
 CITY_COLORS = px.colors.qualitative.Set2
 
-# Etiquetas de meses en español para el calendario (día del año → mes)
-MONTH_DOY    = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
-MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
-                "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+# Emojis de ciudad para etiquetas
+CITY_EMOJI = {
+    "CDMX":        "🌆 CDMX",
+    "Monterrey":   "🏔️ Monterrey",
+    "Guadalajara": "🌺 Guadalajara",
+}
 
 
 def _unit(poll: str) -> str:
     return POLLUTANT_LABELS[poll].split("(")[-1].replace(")", "")
+
+
+def _city_label(city: str) -> str:
+    return CITY_EMOJI.get(city, city)
 
 
 # ─── CSS personalizado ────────────────────────────────────────────────────────
@@ -77,10 +86,16 @@ st.markdown("""
        border-bottom: 2px solid #FF6B35; padding-bottom: 6px; margin-top: 2rem; }
   .narr { font-size: 1.05rem; line-height: 1.75; color: #1a1a1a; }
   .callout {
-    background: #fff8f0; border-left: 4px solid #FF6B35;
-    padding: 14px 18px; border-radius: 6px; margin: 14px 0;
-    font-size: 1rem; line-height: 1.65;
+    background: #2a2a2a;
+    color: #ffffff;
+    border-left: 4px solid #FF6B35;
+    padding: 16px 18px;
+    border-radius: 8px;
+    margin: 14px 0;
+    font-size: 1rem;
+    line-height: 1.65;
   }
+  .callout strong { color: #FF6B35; }
   .footer {
     font-size: 0.82rem; color: #888; margin-top: 50px;
     border-top: 1px solid #eee; padding-top: 14px;
@@ -148,13 +163,22 @@ está peor?** La respuesta, como veremos, es más matizada —y más interesante
 """)
 st.markdown('</div>', unsafe_allow_html=True)
 
+# ── Métricas destacadas ───────────────────────────────────────────────────────
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.metric("📊 Estaciones analizadas", "47 estaciones")
+with m2:
+    st.metric("📅 Período cubierto", "2019 – 2024")
+with m3:
+    st.metric("🏙️ Zonas metropolitanas", "3 ciudades")
+
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 1 · Ranking de ciudades
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 1 · ¿Cuáles son las ciudades más contaminadas?")
+st.markdown("## 🏭 1 · ¿Cuáles son las ciudades más contaminadas?")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -192,7 +216,10 @@ prev_avgs    = (daily[daily["anio"] == year_s1 - 1].groupby("ciudad")[poll_s1].m
 
 ranking = current_avgs.reset_index()
 ranking.columns = ["ciudad", "valor"]
-ranking = ranking.sort_values("valor", ascending=False)   # mayor arriba
+ranking = ranking.sort_values("valor", ascending=False)
+
+# Añadir emoji al label de ciudad
+ranking["ciudad_label"] = ranking["ciudad"].apply(_city_label)
 
 
 def _yoy(city: str) -> str:
@@ -207,7 +234,7 @@ def _yoy(city: str) -> str:
 ranking["yoy"] = ranking["ciudad"].apply(_yoy)
 
 fig1 = go.Figure(go.Bar(
-    y=ranking["ciudad"],
+    y=ranking["ciudad_label"],
     x=ranking["valor"],
     orientation="h",
     marker=dict(
@@ -215,7 +242,7 @@ fig1 = go.Figure(go.Bar(
         colorscale="Oranges",
         showscale=False,
     ),
-    customdata=np.stack([ranking["ciudad"], ranking["yoy"]], axis=1),
+    customdata=np.stack([ranking["ciudad_label"], ranking["yoy"]], axis=1),
     hovertemplate=(
         "<b>%{customdata[0]}</b><br>"
         f"Promedio {year_s1}: %{{x:.4g}} {unit_s1}<br>"
@@ -225,7 +252,6 @@ fig1 = go.Figure(go.Bar(
     texttemplate="%{text:.4g}",
     textposition="outside",
 ))
-# Mayor a menor: mayor aparece primero (arriba) en barras horizontales
 fig1.update_yaxes(autorange="reversed", tickfont_size=13)
 fig1.update_xaxes(showgrid=True, gridcolor="#f0f0f0")
 fig1.update_layout(
@@ -240,14 +266,15 @@ with col_chart:
 
 if len(ranking) > 0:
     top_city = ranking.iloc[0]["ciudad"]
-    top_val  = ranking.iloc[0]["valor"]
+    top_label = ranking.iloc[0]["ciudad_label"]
+    top_val   = ranking.iloc[0]["valor"]
     ratio_str = (
         f" El rango entre la más limpia y la más contaminada es de "
         f"<strong>{ranking['valor'].max() / ranking['valor'].min():.1f}×</strong>."
         if len(ranking) > 1 else ""
     )
     st.markdown(
-        f'<div class="callout">📍 <strong>{top_city}</strong> encabeza el ranking con '
+        f'<div class="callout">📍 <strong>{top_label}</strong> encabeza el ranking con '
         f'un promedio de <strong>{top_val:.4g} {unit_s1}</strong> en {year_s1}.{ratio_str}</div>',
         unsafe_allow_html=True,
     )
@@ -260,7 +287,7 @@ st.divider()
 # SECCIÓN 2 · Heatmap día × hora
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 2 · ¿Respiramos peor en lunes? El patrón semanal")
+st.markdown("## 📅 2 · ¿Respiramos peor en lunes? El patrón semanal")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -297,7 +324,6 @@ pivot2 = (
 )
 pivot2.index = [DAY_ES.get(d, d) for d in pivot2.index]
 
-# Promedio global para calcular % sobre/bajo el promedio
 vals2 = pivot2.values
 global_avg2 = float(np.nanmean(vals2)) if not np.all(np.isnan(vals2)) else 1.0
 
@@ -328,11 +354,25 @@ fig2 = go.Figure(go.Heatmap(
     hovertemplate="%{text}<extra></extra>",
     colorbar=dict(title=dict(text=unit_s2, side="right")),
 ))
+
+# ── Anotación en la celda de pico máximo ──────────────────────────────────────
+if not np.all(np.isnan(vals2)):
+    max_idx = np.unravel_index(np.nanargmax(vals2), vals2.shape)
+    max_day  = list(pivot2.index)[max_idx[0]]
+    max_hour = f"{pivot2.columns[max_idx[1]]:02d}h"
+    fig2.add_annotation(
+        x=max_hour, y=max_day,
+        text="pico máximo",
+        showarrow=False,
+        font=dict(color="white", size=9, family="Inter"),
+        xref="x", yref="y",
+    )
+
 fig2.update_layout(
     title=f"Patrón semanal — {POLLUTANT_LABELS[poll_s2]} en {city_s2}",
     margin=dict(l=10, r=20, t=55, b=40), height=340,
     font=dict(family="Inter, sans-serif"),
-    yaxis=dict(autorange="reversed"),   # Lunes arriba
+    yaxis=dict(autorange="reversed"),
     xaxis=dict(
         tickvals=["00h", "06h", "12h", "18h", "23h"],
         ticktext=["00h", "06h", "12h", "18h", "23h"],
@@ -355,117 +395,99 @@ st.markdown('</div>', unsafe_allow_html=True)
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 3 · Calendario heatmap (NUEVA)
+# SECCIÓN 3 · Boxplot mensual
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 3 · Cinco años de aire, día por día")
+st.markdown("## 🌿 3 · ¿Qué meses respiramos peor?")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
-Un calendario de calor permite ver de un vistazo cada uno de los más de 1,800 días entre 2019
-y 2024. Cada celda es un día; el color indica la concentración de PM2.5: blanco es aire limpio,
-rojo oscuro es contaminación elevada. Los patrones estacionales, el efecto COVID y los episodios
-extraordinarios se vuelven visibles de inmediato.
+No todos los meses son iguales. La quema agrícola de primavera, los incendios forestales de
+verano y la inversión térmica de invierno crean patrones estacionales tan consistentes como el
+calendario mismo. Cada caja muestra la dispersión real de todos los días de ese mes entre 2019
+y 2024: la línea central es la mediana, la caja contiene el 50% de los días, y los puntos son
+episodios extraordinarios.
 """)
 st.markdown('</div>', unsafe_allow_html=True)
 
-city_cal = st.radio(
-    "Ciudad", sorted(daily["ciudad"].unique()),
-    horizontal=True, key="cal_city"
+poll_s3 = st.selectbox(
+    "Contaminante", list(POLLUTANT_LABELS.keys()),
+    format_func=lambda x: POLLUTANT_LABELS[x], key="s3_poll"
 )
 
-# Construir pivot año × día_del_año
-cal_df = daily[daily["ciudad"] == city_cal][["fecha", "PM25"]].copy()
-cal_df["fecha"]    = pd.to_datetime(cal_df["fecha"])
-cal_df["anio"]     = cal_df["fecha"].dt.year
-cal_df["dia_anio"] = cal_df["fecha"].dt.dayofyear
+unit_s3 = _unit(poll_s3)
 
-pivot_cal = cal_df.pivot_table(
-    index="anio", columns="dia_anio", values="PM25", aggfunc="mean"
+# Preparar datos: daily tiene columna 'mes' (1-12) y el contaminante
+box_df = daily[["ciudad", "mes", poll_s3]].dropna(subset=[poll_s3]).copy()
+box_df["mes_nombre"] = box_df["mes"].apply(lambda m: MONTH_NAMES_ES[int(m) - 1])
+# Convertir a categórico con orden cronológico para que px.box respete el orden
+box_df["mes_nombre"] = pd.Categorical(
+    box_df["mes_nombre"], categories=MONTH_NAMES_ES, ordered=True
 )
-# Asegurar columnas 1-366
-for d in range(1, 367):
-    if d not in pivot_cal.columns:
-        pivot_cal[d] = np.nan
-pivot_cal = pivot_cal.reindex(columns=range(1, 367))
+box_df = box_df.sort_values("mes_nombre")
 
-# Construir matriz de hover
-hover_cal = []
-for year in pivot_cal.index:
-    row = []
-    for doy in range(1, 367):
-        val = pivot_cal.loc[year, doy]
-        try:
-            date = pd.Timestamp(f"{int(year)}-01-01") + pd.Timedelta(days=int(doy) - 1)
-            if pd.isna(val):
-                row.append(f"{date.strftime('%d %b %Y')}<br>Sin datos")
-            else:
-                if val < 25:
-                    calidad = "🟢 Buena  (<25 μg/m³)"
-                elif val <= 45:
-                    calidad = "🟡 Regular (25–45 μg/m³)"
-                else:
-                    calidad = "🔴 Mala    (>45 μg/m³)"
-                row.append(
-                    f"{date.strftime('%d %b %Y')}<br>"
-                    f"PM2.5: {val:.1f} μg/m³<br>"
-                    f"Calidad: {calidad}"
-                )
-        except Exception:
-            row.append("Sin datos")
-    hover_cal.append(row)
+# Añadir emoji al label de ciudad para colorear
+box_df["ciudad_label"] = box_df["ciudad"].apply(_city_label)
 
-fig_cal = go.Figure(go.Heatmap(
-    z=pivot_cal.values,
-    x=list(range(1, 367)),
-    y=[str(int(y)) for y in pivot_cal.index],
-    colorscale="Reds",
-    zmin=0,
-    zmax=80,
-    text=hover_cal,
-    hovertemplate="%{text}<extra></extra>",
-    colorbar=dict(
-        title=dict(text="PM2.5<br>(μg/m³)", side="right"),
-        tickvals=[0, 25, 45, 80],
-        ticktext=["0", "25 · Buena", "45 · Norma", "80+"],
-        len=0.8,
-    ),
-))
-fig_cal.update_layout(
-    title=f"Calendario diario de PM2.5 — {city_cal} (2019–2024)",
-    margin=dict(l=10, r=20, t=50, b=50), height=330,
-    font=dict(family="Inter, sans-serif"),
-    xaxis=dict(
-        tickvals=MONTH_DOY,
-        ticktext=MONTH_LABELS,
-        title_text="",
-        showgrid=False,
-    ),
-    yaxis=dict(
-        title_text="",
-        autorange="reversed",   # 2019 arriba
-        tickfont_size=12,
-    ),
+fig_box = px.box(
+    box_df,
+    x="mes_nombre",
+    y=poll_s3,
+    color="ciudad_label",
+    points="outliers",
+    color_discrete_sequence=CITY_COLORS,
+    labels={
+        "mes_nombre":    "Mes",
+        poll_s3:         POLLUTANT_LABELS[poll_s3],
+        "ciudad_label":  "Ciudad",
+    },
+    title=f"Distribución mensual de {POLLUTANT_LABELS[poll_s3]} por ciudad (2019–2024)",
+    category_orders={"mes_nombre": MONTH_NAMES_ES},
+)
+
+# Línea horizontal de norma NOM-025
+if poll_s3 in NORMAS:
+    norma_val_s3 = NORMAS[poll_s3]
+    fig_box.add_hline(
+        y=norma_val_s3,
+        line_dash="dot", line_color="#7f8c8d", line_width=1.5,
+        annotation_text=f"Norma NOM-025: {norma_val_s3} {unit_s3}",
+        annotation_position="bottom right",
+        annotation=dict(font_size=10, font_color="#7f8c8d"),
+    )
+
+fig_box.update_layout(
     plot_bgcolor="white",
+    height=480,
+    margin=dict(l=10, r=10, t=55, b=40),
+    font=dict(family="Inter, sans-serif"),
+    legend=dict(
+        title_text="Ciudad",
+        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+    ),
+    xaxis=dict(showgrid=False),
+    yaxis=dict(showgrid=True, gridcolor="#f0f0f0"),
+    boxmode="group",
 )
 
-st.plotly_chart(fig_cal, use_container_width=True)
+st.plotly_chart(fig_box, use_container_width=True)
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
-El verano de 2019 y el otoño de 2022 muestran los episodios más intensos en Guadalajara. La
-franja de abril 2020 se enfría notablemente en las tres ciudades — el aire respondió antes de
-que los humanos lo notáramos.
+Guadalajara muestra sus peores meses entre marzo y mayo — la temporada de quema de caña y
+rastrojo agrícola en el Bajío. Monterrey, en cambio, tiene picos en invierno por la inversión
+térmica que atrapa las emisiones industriales cerca del suelo. La CDMX es la más estable del
+grupo: sus programas de verificación vehicular han aplanado los picos estacionales.
 """)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 4 · Serie temporal y COVID (renumerada)
+# SECCIÓN 4 · Serie temporal y COVID
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 4 · El COVID-19 como experimento natural")
+st.markdown("## 🦠 4 · El COVID-19 como experimento natural")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -482,7 +504,10 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 monthly = load_monthly()
 
-col1, col2, col3 = st.columns([2, 2, 1])
+# Filtrar hasta 2024 para que el eje X no muestre 2025
+monthly = monthly[monthly["anio"] <= 2024].copy()
+
+col1, col2 = st.columns([2, 2])
 with col1:
     all_cities = sorted(monthly["ciudad"].unique())
     default_cities = [c for c in ["CDMX", "Monterrey", "Guadalajara"] if c in all_cities]
@@ -494,41 +519,41 @@ with col2:
         "Contaminante", list(POLLUTANT_LABELS.keys()),
         format_func=lambda x: POLLUTANT_LABELS[x], key="s4_poll"
     )
-with col3:
-    all_years = sorted(monthly["anio"].unique())
-    year_range = st.select_slider(
-        "Rango de años", options=all_years,
-        value=(all_years[0], all_years[-1]), key="s4_years"
-    )
+
+# Multiselect de años individuales (reemplaza slider)
+all_years = sorted(monthly["anio"].unique())
+years_s4 = st.multiselect(
+    "Años a mostrar", all_years, default=all_years, key="s4_years"
+)
 
 unit_s4 = _unit(poll_s4)
 
 if not cities_s4:
     st.warning("Selecciona al menos una ciudad.")
+elif not years_s4:
+    st.warning("Selecciona al menos un año.")
 else:
     mdf = monthly[
         monthly["ciudad"].isin(cities_s4) &
-        (monthly["anio"] >= year_range[0]) &
-        (monthly["anio"] <= year_range[1])
+        monthly["anio"].isin(years_s4)
     ].dropna(subset=[poll_s4])
 
     fig3 = px.line(
         mdf, x="fecha_mes", y=poll_s4, color="ciudad",
         color_discrete_sequence=CITY_COLORS,
         labels={"fecha_mes": "", poll_s4: POLLUTANT_LABELS[poll_s4], "ciudad": "Ciudad"},
-        title=f"Evolución mensual de {POLLUTANT_LABELS[poll_s4]} — {year_range[0]}–{year_range[1]}",
+        title=f"Evolución mensual de {POLLUTANT_LABELS[poll_s4]}",
         markers=True,
     )
 
-    # ── Banda del confinamiento (Mejora 3) ──────────────────────────────────
+    # ── Banda del confinamiento ──────────────────────────────────────────────
     fig3.add_vrect(
         x0="2020-03", x1="2020-06",
         fillcolor="rgba(255,100,100,0.15)", line_width=0,
         layer="below",
     )
 
-    # ── Línea vertical al inicio del confinamiento (bug fix: add_shape) ──────
-    # (sustituye al add_vline que fallaba con ejes datetime)
+    # ── Línea vertical inicio confinamiento (add_shape — bug fix datetime) ───
     fig3.add_shape(
         type="line",
         x0="2020-03", x1="2020-03",
@@ -550,7 +575,7 @@ else:
         xanchor="left",
     )
 
-    # ── Norma oficial (línea horizontal — add_hline no tiene problema con X) ─
+    # ── Norma oficial ────────────────────────────────────────────────────────
     if poll_s4 in NORMAS:
         norma_val = NORMAS[poll_s4]
         fig3.add_hline(
@@ -587,7 +612,7 @@ st.divider()
 
 # ─── CONCLUSIONES ─────────────────────────────────────────────────────────────
 
-st.markdown("## Conclusiones")
+st.markdown("## 💡 Conclusiones")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
