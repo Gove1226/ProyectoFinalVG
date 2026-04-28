@@ -1,19 +1,27 @@
 """
-Limpieza y procesamiento de datos de calidad del aire en México.
+Limpieza y procesamiento de datos reales de SINAICA (calidad del aire México).
 Fuente: SINAICA – INECC (https://sinaica.inecc.gob.mx/)
 Autor: Alexander Góngora Venegas
 Curso: Visualización gráfica para IA – Universidad Iberoamericana León
 
-Uso:
-    python src/data_processing.py
+Estructura esperada en data/raw/base de datos VG/:
+    {ciudad}/{contaminante}/Datos SINAICA-{poll}-CH-{año}.csv
 
-Si no hay CSVs en data/raw/, se generan datos sintéticos realistas basados
-en patrones documentados de SINAICA para las 6 ciudades más contaminadas.
-Para forzar la regeneración: python src/data_processing.py --generate
+Uso:
+    python src/data_processing.py          # usa datos reales si existen
+    python src/data_processing.py --synthetic  # fuerza datos sintéticos
+
+Salidas en data/processed/:
+    datos_limpios.csv    — promedios horarios por ciudad+contaminante (formato largo)
+    datos_diarios.csv    — promedios diarios por ciudad+contaminante (formato largo)
+    daily_avg.parquet    — diarios en formato ancho (un contaminante por columna)
+    weekly_pattern.parquet — patrón día×hora en formato ancho
+    monthly_series.parquet — serie mensual en formato ancho
 """
 
 import argparse
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -22,321 +30,383 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-RAW_DIR = BASE_DIR / "data" / "raw"
+BASE_DIR   = Path(__file__).resolve().parent.parent
+DB_DIR     = BASE_DIR / "data" / "raw" / "base de datos VG"
+RAW_DIR    = BASE_DIR / "data" / "raw"        # fallback CSVs sintéticos
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
-# ─── Configuración de ciudades ────────────────────────────────────────────────
-CITIES = {
-    "Mexicali": {
-        "lat": 32.66, "lon": -115.47, "estado": "Baja California",
-        "base": {"PM25": 35.0, "O3": 55.0, "NO2": 40.0, "CO": 1.8, "SO2": 12.0},
-    },
-    "Monterrey": {
-        "lat": 25.67, "lon": -100.31, "estado": "Nuevo León",
-        "base": {"PM25": 28.0, "O3": 60.0, "NO2": 45.0, "CO": 1.5, "SO2": 10.0},
-    },
-    "CDMX": {
-        "lat": 19.43, "lon": -99.13, "estado": "Ciudad de México",
-        "base": {"PM25": 25.0, "O3": 65.0, "NO2": 50.0, "CO": 1.2, "SO2": 8.0},
-    },
-    "Guadalajara": {
-        "lat": 20.66, "lon": -103.35, "estado": "Jalisco",
-        "base": {"PM25": 20.0, "O3": 50.0, "NO2": 35.0, "CO": 1.0, "SO2": 6.0},
-    },
-    "Puebla": {
-        "lat": 19.04, "lon": -98.19, "estado": "Puebla",
-        "base": {"PM25": 18.0, "O3": 45.0, "NO2": 30.0, "CO": 0.9, "SO2": 5.0},
-    },
-    "Tijuana": {
-        "lat": 32.52, "lon": -117.03, "estado": "Baja California",
-        "base": {"PM25": 15.0, "O3": 40.0, "NO2": 28.0, "CO": 0.8, "SO2": 4.0},
-    },
+# Mapeo: nombre de carpeta → nombre de ciudad normalizado
+CITY_MAP = {
+    "cdmx":        "CDMX",
+    "guadalajara": "Guadalajara",
+    "monterrey":   "Monterrey",
 }
 
-POLLUTANTS = ["PM25", "O3", "NO2", "CO", "SO2"]
+# Mapeo: nombre de carpeta de contaminante → nombre de columna en el output
+POLL_MAP = {
+    "PM2.5": "PM25",
+    "CO":    "CO",
+    "NO2":   "NO2",
+    "O3":    "O3",
+    "SO2":   "SO2",
+}
 
-# Límites máximos permitidos — valores por encima se consideran registros corruptos
-MAX_VALUES = {"PM25": 500.0, "O3": 300.0, "NO2": 400.0, "CO": 50.0, "SO2": 200.0}
+POLLUTANTS = ["PM25", "CO", "NO2", "O3", "SO2"]
+
+# Límites físicos máximos razonables (valores mayores = sensor corrupto)
+# Gaseous pollutants in ppm; PM2.5 in µg/m³
+MAX_VALUES = {
+    "PM25": 500.0,
+    "O3":     1.0,   # ppm → 0-0.5 típico
+    "NO2":    1.0,
+    "CO":    50.0,
+    "SO2":    1.0,
+}
+
+# Patrón de valores faltantes de SINAICA: "- - - -" con variaciones de espacios
+_MISSING_RE = re.compile(r"^\s*(-\s*){2,}\s*$")
+
+ESTACION_ANIO = {
+    12: "Invierno", 1: "Invierno",  2: "Invierno",
+    3:  "Primavera", 4: "Primavera", 5: "Primavera",
+    6:  "Verano",   7: "Verano",    8: "Verano",
+    9:  "Otono",   10: "Otono",    11: "Otono",
+}
 
 
-# ─── Factores del modelo sintético ───────────────────────────────────────────
+# ─── Lectura de un CSV SINAICA ─────────────────────────────────────────────
 
-def _seasonal(month: np.ndarray, pollutant: str) -> np.ndarray:
+def _read_sinaica_csv(path: Path) -> pd.DataFrame:
     """
-    Factor estacional.
-    PM2.5/CO/SO2: pico en invierno (inversiones térmicas).
-    O3: pico en verano (mayor radiación UV para fotoquímica).
-    NO2: variación moderada en invierno.
+    Lee un CSV de SINAICA y devuelve el promedio horario de todas las estaciones.
+
+    Estructura del archivo:
+        col 0: Parámetro  |  col 1: Fecha  |  col 2: Hora
+        cols 3..-2: estaciones de monitoreo
+        col -1: Unidad
+
+    Retorna DataFrame con columnas: fecha, hora, valor
+    donde 'valor' es el promedio de estaciones válidas en esa hora.
     """
-    if pollutant in ("PM25", "CO", "SO2"):
-        return 1 + 0.35 * np.cos(2 * np.pi * (month - 1) / 12)
-    elif pollutant == "O3":
-        return 1 + 0.45 * np.sin(2 * np.pi * (month - 5) / 12 + np.pi / 2)
-    else:  # NO2
-        return 1 + 0.15 * np.cos(2 * np.pi * (month - 1) / 12)
+    df = pd.read_csv(path, encoding="latin-1", dtype=str)
+
+    # Las columnas de estación son las que están entre Hora y Unidad (índices 3..-1)
+    station_cols = list(df.columns[3:-1])
+    if not station_cols:
+        log.warning(f"  Sin columnas de estación en {path.name}")
+        return pd.DataFrame(columns=["fecha", "hora", "valor"])
+
+    # Reemplazar valores faltantes por NaN
+    def clean_val(v):
+        s = str(v).strip()
+        if _MISSING_RE.match(s) or s in ("nan", "", "NaN"):
+            return np.nan
+        return v
+
+    for col in station_cols:
+        df[col] = df[col].map(clean_val)
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Calcular promedio de estaciones por fila (ignorando NaN)
+    df["valor"] = df[station_cols].mean(axis=1, skipna=True)
+
+    # Parsear Fecha y Hora
+    df["fecha"] = pd.to_datetime(df["Fecha"], format="%Y-%m-%d", errors="coerce")
+    df["hora"]  = pd.to_numeric(df["Hora"], errors="coerce").astype("Int64")
+
+    return df[["fecha", "hora", "valor"]].copy()
 
 
-def _weekly(dayofweek: np.ndarray, pollutant: str) -> np.ndarray:
+# ─── Pipeline principal: datos reales ─────────────────────────────────────
+
+def process_real_data() -> pd.DataFrame:
     """
-    Factor día de la semana. 0 = lunes, 6 = domingo.
-    PM2.5/NO2/CO/SO2: pico martes-jueves (acumulado laboral), caída fin de semana.
-    O3: efecto fin de semana invertido (menos NO que lo destruya → más O3).
+    Recorre ciudad → contaminante → año y agrega todos los CSVs en un
+    DataFrame largo con columnas: ciudad, contaminante, fecha, hora, valor.
     """
-    if pollutant == "O3":
-        return np.where(dayofweek >= 5, 1.08, 1.0)
+    chunks = []
 
-    monday = np.where(dayofweek == 0, 1.05, 1.0)          # arranque semana
-    midweek = np.where(np.isin(dayofweek, [1, 2, 3]), 1.12, 1.0)  # martes-jueves
-    weekend = np.where(dayofweek >= 5, 0.78, 1.0)         # sábado-domingo
-    return monday * midweek * weekend
+    for city_dir in sorted(DB_DIR.iterdir()):
+        if not city_dir.is_dir():
+            continue
+        ciudad = CITY_MAP.get(city_dir.name.lower())
+        if ciudad is None:
+            log.warning(f"Carpeta desconocida ignorada: {city_dir.name}")
+            continue
 
+        for poll_dir in sorted(city_dir.iterdir()):
+            if not poll_dir.is_dir():
+                continue
+            poll_col = POLL_MAP.get(poll_dir.name)
+            if poll_col is None:
+                log.warning(f"  Contaminante desconocido ignorado: {poll_dir.name}")
+                continue
 
-def _hourly(hour: np.ndarray, pollutant: str) -> np.ndarray:
-    """
-    Patrón intradiario.
-    PM2.5/NO2/CO/SO2: dos picos (hora punta mañana 8h y tarde 19h).
-    O3: un pico fotoquímico vespertino (~15h).
-    """
-    if pollutant in ("PM25", "NO2", "CO", "SO2"):
-        morning = np.exp(-((hour - 8) ** 2) / 6)
-        evening = np.exp(-((hour - 19) ** 2) / 8)
-        return 1 + 0.55 * (morning + evening)
-    else:  # O3
-        return 1 + 0.70 * np.exp(-((hour - 15) ** 2) / 20)
+            csvs = sorted(poll_dir.glob("*.csv"))
+            log.info(f"  {ciudad}/{poll_dir.name}: {len(csvs)} archivos")
 
+            for csv_path in csvs:
+                try:
+                    df_chunk = _read_sinaica_csv(csv_path)
+                    df_chunk["ciudad"]      = ciudad
+                    df_chunk["contaminante"] = poll_col
+                    chunks.append(df_chunk)
+                except Exception as exc:
+                    log.warning(f"    ERROR leyendo {csv_path.name}: {exc}")
 
-def _covid(timestamps: pd.DatetimeIndex, pollutant: str) -> np.ndarray:
-    """
-    Factor de confinamiento COVID.
-    Confinamiento estricto: 23 mar – 1 jun 2020.
-    Reapertura gradual: 2 jun – 1 sep 2020.
-    O3 sube levemente por menor titulación con NO.
-    """
-    factor = np.ones(len(timestamps))
-    strict = (timestamps >= "2020-03-23") & (timestamps <= "2020-06-01")
-    partial = (timestamps >= "2020-06-02") & (timestamps <= "2020-09-01")
+    if not chunks:
+        raise RuntimeError(f"No se encontraron CSVs en {DB_DIR}")
 
-    reductions = {
-        "NO2": (0.55, 0.78),
-        "CO":  (0.58, 0.80),
-        "PM25": (0.65, 0.82),
-        "SO2": (0.70, 0.85),
-        "O3":  (1.10, 1.05),  # invierte: sube
-    }
-    s_factor, p_factor = reductions.get(pollutant, (0.75, 0.88))
-    factor[strict] = s_factor
-    factor[partial] = p_factor
-    return factor
-
-
-# ─── Generación de datos sintéticos ──────────────────────────────────────────
-
-def generate_synthetic_raw(start: str = "2019-01-01", end: str = "2024-12-31") -> None:
-    """Genera CSVs horarios sintéticos en data/raw/ por ciudad."""
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(42)
-    timestamps = pd.date_range(start, end, freq="h")
-
-    month_arr = timestamps.month.values.astype(float)
-    dow_arr = timestamps.dayofweek.values
-    hour_arr = timestamps.hour.values.astype(float)
-    year_arr = timestamps.year.values
-
-    for city, info in CITIES.items():
-        log.info(f"  Generando datos para {city} ({len(timestamps):,} registros)...")
-        series_dict = {"fecha_hora": timestamps}
-
-        for poll in POLLUTANTS:
-            base = info["base"][poll]
-            seas = _seasonal(month_arr, poll)
-            week = _weekly(dow_arr, poll)
-            hour_f = _hourly(hour_arr, poll)
-            cov = _covid(timestamps, poll)
-            # Mejora ambiental gradual ~2 % por año a partir de 2019
-            trend = 1 - 0.02 * (year_arr - 2019)
-
-            signal = base * seas * week * hour_f * cov * trend
-            noise = rng.normal(0, base * 0.08, len(timestamps))
-            values = np.maximum(0.0, signal + noise)
-
-            # ~3 % de NaN simulando fallas de sensor
-            nan_idx = rng.random(len(timestamps)) < 0.03
-            values = values.astype(float)
-            values[nan_idx] = np.nan
-
-            series_dict[poll] = values
-
-        df = pd.DataFrame(series_dict)
-        df["ciudad"] = city
-        df["estado"] = info["estado"]
-        df["lat"] = info["lat"]
-        df["lon"] = info["lon"]
-        df["estacion"] = f"Est_{city}_01"
-
-        out = RAW_DIR / f"{city.lower()}_2019_2024.csv"
-        df.to_csv(out, index=False)
-        log.info(f"    Guardado: {out.name}")
-
-
-# ─── Carga ────────────────────────────────────────────────────────────────────
-
-def load_raw() -> pd.DataFrame:
-    """Carga todos los CSVs de data/raw/."""
-    csvs = sorted(RAW_DIR.glob("*.csv"))
-    if not csvs:
-        raise FileNotFoundError(f"No hay CSVs en {RAW_DIR}.")
-    dfs = [pd.read_csv(p, parse_dates=["fecha_hora"]) for p in csvs]
-    df = pd.concat(dfs, ignore_index=True)
-    log.info(f"CSVs cargados: {len(csvs)} archivos, {len(df):,} filas totales")
+    df = pd.concat(chunks, ignore_index=True)
+    log.info(f"Total filas concatenadas: {len(df):,}")
     return df
 
 
-# ─── Limpieza ─────────────────────────────────────────────────────────────────
+# ─── Limpieza y columnas derivadas ────────────────────────────────────────
 
-def clean(df: pd.DataFrame) -> pd.DataFrame:
+def clean_and_enrich(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Criterios de limpieza (documentados):
-    1. Eliminar filas con fecha_hora inválida (NaT).
-    2. Reemplazar valores negativos por NaN — físicamente imposibles.
-    3. Reemplazar valores sobre límite máximo por NaN — sensor corrupto.
-    4. Interpolar huecos cortos (≤ 3 horas consecutivas) por ciudad.
-    5. Descartar filas donde >3 contaminantes son simultáneamente NaN.
-    6. Generar columnas temporales derivadas.
+    Criterios de limpieza:
+    1. Eliminar filas con fecha o hora inválidas.
+    2. Eliminar filas donde valor es NaN (sin ninguna estación disponible).
+    3. Reemplazar valores negativos por NaN.
+    4. Reemplazar valores sobre el límite máximo por NaN (sensor corrupto).
+    5. Agregar columnas temporales derivadas.
     """
     df = df.copy()
-    df.columns = df.columns.str.strip().str.replace(" ", "_")
 
-    # 1. Timestamps inválidos
-    n_before = len(df)
-    df = df.dropna(subset=["fecha_hora"])
-    log.info(f"Paso 1 — Timestamps inválidos eliminados: {n_before - len(df)}")
+    # 1. Fechas/horas inválidas
+    n0 = len(df)
+    df = df.dropna(subset=["fecha", "hora", "valor"])
+    log.info(f"Paso 1 — Filas con fecha/hora/valor NaT eliminadas: {n0 - len(df)}")
 
-    # 2-3. Valores fuera de rango
+    # 2-3. Valores físicamente imposibles
     for poll, maxval in MAX_VALUES.items():
-        if poll in df.columns:
-            mask_neg = df[poll] < 0
-            mask_max = df[poll] > maxval
-            df.loc[mask_neg | mask_max, poll] = np.nan
-            n_bad = (mask_neg | mask_max).sum()
-            if n_bad > 0:
-                log.info(f"Paso 2-3 — {poll}: {n_bad} valores fuera de rango → NaN")
+        mask = df["contaminante"] == poll
+        n_neg = ((df.loc[mask, "valor"] < 0)).sum()
+        n_max = ((df.loc[mask, "valor"] > maxval)).sum()
+        if n_neg + n_max > 0:
+            df.loc[mask & (df["valor"] < 0),      "valor"] = np.nan
+            df.loc[mask & (df["valor"] > maxval),  "valor"] = np.nan
+            log.info(f"Paso 2-3 — {poll}: {n_neg} negativos + {n_max} sobre límite → NaN")
 
-    # 4. Interpolación de huecos cortos (por ciudad, máx 3 horas)
-    poll_cols = [p for p in POLLUTANTS if p in df.columns]
-    df = df.sort_values(["ciudad", "fecha_hora"]).reset_index(drop=True)
-    for poll in poll_cols:
-        df[poll] = df.groupby("ciudad")[poll].transform(
-            lambda s: s.interpolate(method="linear", limit=3)
-        )
+    df = df.dropna(subset=["valor"])
 
-    # 5. Descartar filas con mayoría de contaminantes faltantes
-    df["_n_nan"] = df[poll_cols].isna().sum(axis=1)
-    n_before = len(df)
-    df = df[df["_n_nan"] <= 3].drop(columns=["_n_nan"])
-    log.info(f"Paso 5 — Filas con >3 contaminantes NaN eliminadas: {n_before - len(df)}")
+    # 4. Columnas temporales
+    df["anio"]        = df["fecha"].dt.year
+    df["mes"]         = df["fecha"].dt.month
+    df["dia_semana"]  = df["fecha"].dt.dayofweek          # 0 = lunes
+    df["nombre_dia"]  = df["fecha"].dt.day_name()         # English
+    df["semana"]      = df["fecha"].dt.isocalendar().week.astype(int)
+    df["estacion_anio"] = df["mes"].map(ESTACION_ANIO)
 
-    # 6. Columnas temporales derivadas
-    df["anio"] = df["fecha_hora"].dt.year
-    df["mes"] = df["fecha_hora"].dt.month
-    df["dia_semana"] = df["fecha_hora"].dt.dayofweek          # 0 = lunes
-    df["nombre_dia"] = df["fecha_hora"].dt.day_name()         # English (para indexado)
-    df["hora"] = df["fecha_hora"].dt.hour
-    df["fecha"] = df["fecha_hora"].dt.normalize()
-    df["semana"] = df["fecha_hora"].dt.isocalendar().week.astype(int)
-    df["estacion_anio"] = df["mes"].map({
-        12: "Invierno", 1: "Invierno", 2: "Invierno",
-        3: "Primavera", 4: "Primavera", 5: "Primavera",
-        6: "Verano", 7: "Verano", 8: "Verano",
-        9: "Otono", 10: "Otono", 11: "Otono",
-    })
-
-    log.info(f"Limpieza completada. Filas resultantes: {len(df):,}")
+    log.info(f"Filas tras limpieza: {len(df):,}")
     return df
 
 
-# ─── Agregados ────────────────────────────────────────────────────────────────
+# ─── Agregados ────────────────────────────────────────────────────────────
 
-def build_aggregates(df: pd.DataFrame):
+def build_all_aggregates(df: pd.DataFrame):
     """
-    Genera tres datasets procesados:
-    - daily_avg: promedio diario por ciudad y contaminante
-    - weekly_pattern: promedio por ciudad × día-semana × hora (para heatmap)
-    - monthly_series: promedio mensual por ciudad (para serie temporal)
+    Genera 5 datasets de salida desde el DataFrame largo limpio.
+
+    Returns:
+        datos_limpios   — horarios por ciudad+contaminante (largo)
+        datos_diarios   — diarios por ciudad+contaminante (largo)
+        daily_wide      — diarios en ancho (un contaminante por columna)
+        weekly_wide     — patrón día×hora en ancho
+        monthly_wide    — serie mensual en ancho
     """
-    poll_cols = [p for p in POLLUTANTS if p in df.columns]
+    grp_keys_hourly = ["ciudad", "contaminante", "fecha", "hora",
+                       "anio", "mes", "dia_semana", "nombre_dia", "semana", "estacion_anio"]
+    grp_keys_daily  = ["ciudad", "contaminante", "fecha",
+                       "anio", "mes", "dia_semana", "nombre_dia", "semana", "estacion_anio"]
 
-    # Promedio diario
-    daily = (
-        df.groupby(
-            ["ciudad", "estado", "lat", "lon",
-             "fecha", "anio", "mes", "dia_semana",
-             "nombre_dia", "semana", "estacion_anio"]
-        )[poll_cols]
+    # ── Largo horario ──
+    datos_limpios = (
+        df.groupby(grp_keys_hourly)["valor"]
         .mean()
         .reset_index()
     )
 
-    # Patrón semanal (día × hora) — base del heatmap
-    weekly_pattern = (
-        df.groupby(["ciudad", "dia_semana", "nombre_dia", "hora"])[poll_cols]
+    # ── Largo diario ──
+    datos_diarios = (
+        df.groupby(grp_keys_daily)["valor"]
         .mean()
         .reset_index()
     )
 
-    # Serie mensual
-    monthly = (
-        df.groupby(["ciudad", "anio", "mes"])[poll_cols]
+    # ── Ancho diario para app.py ──
+    daily_wide = datos_diarios.pivot_table(
+        index=["ciudad", "fecha", "anio", "mes",
+               "dia_semana", "nombre_dia", "semana", "estacion_anio"],
+        columns="contaminante",
+        values="valor",
+        aggfunc="mean",
+    ).reset_index()
+    daily_wide.columns.name = None
+    # Asegura que todas las columnas de contaminante estén presentes
+    for p in POLLUTANTS:
+        if p not in daily_wide.columns:
+            daily_wide[p] = np.nan
+
+    # ── Patrón semanal (día × hora) para heatmap ──
+    weekly_wide = (
+        df.groupby(["ciudad", "contaminante", "dia_semana", "nombre_dia", "hora"])["valor"]
         .mean()
         .reset_index()
+        .pivot_table(
+            index=["ciudad", "dia_semana", "nombre_dia", "hora"],
+            columns="contaminante",
+            values="valor",
+            aggfunc="mean",
+        )
+        .reset_index()
     )
-    monthly["fecha_mes"] = pd.to_datetime(
-        monthly["anio"].astype(str) + "-" +
-        monthly["mes"].astype(str).str.zfill(2) + "-01"
+    weekly_wide.columns.name = None
+    for p in POLLUTANTS:
+        if p not in weekly_wide.columns:
+            weekly_wide[p] = np.nan
+
+    # ── Serie mensual ──
+    monthly_wide = (
+        df.groupby(["ciudad", "contaminante", "anio", "mes"])["valor"]
+        .mean()
+        .reset_index()
+        .pivot_table(
+            index=["ciudad", "anio", "mes"],
+            columns="contaminante",
+            values="valor",
+            aggfunc="mean",
+        )
+        .reset_index()
+    )
+    monthly_wide.columns.name = None
+    for p in POLLUTANTS:
+        if p not in monthly_wide.columns:
+            monthly_wide[p] = np.nan
+    monthly_wide["fecha_mes"] = pd.to_datetime(
+        monthly_wide["anio"].astype(str) + "-" +
+        monthly_wide["mes"].astype(str).str.zfill(2) + "-01"
     )
 
-    log.info(f"Agregados: daily={len(daily):,} | weekly_pattern={len(weekly_pattern):,} | monthly={len(monthly):,}")
-    return daily, weekly_pattern, monthly
+    log.info(
+        f"Agregados — horario: {len(datos_limpios):,} | diario: {len(datos_diarios):,} | "
+        f"daily_wide: {len(daily_wide):,} | weekly: {len(weekly_wide):,} | monthly: {len(monthly_wide):,}"
+    )
+    return datos_limpios, datos_diarios, daily_wide, weekly_wide, monthly_wide
 
 
-# ─── Guardado ─────────────────────────────────────────────────────────────────
+# ─── Guardado ─────────────────────────────────────────────────────────────
 
-def save(daily: pd.DataFrame, weekly_pattern: pd.DataFrame, monthly: pd.DataFrame) -> None:
-    """Guarda los datasets en data/processed/ como parquet y CSV."""
+def save_all(datos_limpios, datos_diarios, daily_wide, weekly_wide, monthly_wide):
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    for name, frame in [("daily_avg", daily), ("weekly_pattern", weekly_pattern), ("monthly_series", monthly)]:
-        frame.to_parquet(PROCESSED_DIR / f"{name}.parquet", index=False)
-        frame.to_csv(PROCESSED_DIR / f"{name}.csv", index=False)
+    datos_limpios.to_csv(PROCESSED_DIR / "datos_limpios.csv", index=False)
+    datos_diarios.to_csv(PROCESSED_DIR / "datos_diarios.csv", index=False)
 
-    log.info(f"Archivos guardados en {PROCESSED_DIR}")
+    daily_wide.to_parquet(PROCESSED_DIR / "daily_avg.parquet",      index=False)
+    daily_wide.to_csv(   PROCESSED_DIR / "daily_avg.csv",           index=False)
+
+    weekly_wide.to_parquet(PROCESSED_DIR / "weekly_pattern.parquet", index=False)
+    weekly_wide.to_csv(   PROCESSED_DIR / "weekly_pattern.csv",      index=False)
+
+    monthly_wide.to_parquet(PROCESSED_DIR / "monthly_series.parquet", index=False)
+    monthly_wide.to_csv(   PROCESSED_DIR / "monthly_series.csv",       index=False)
+
+    log.info(f"Todos los archivos guardados en {PROCESSED_DIR}")
 
 
-# ─── Entry point ─────────────────────────────────────────────────────────────
+# ─── Fallback: datos sintéticos (para testing / deploy sin datos reales) ──
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Pipeline de datos SINAICA – calidad del aire México")
-    parser.add_argument("--generate", action="store_true",
-                        help="Fuerza la regeneración de datos sintéticos en data/raw/")
+def _seasonal(month, poll):
+    if poll in ("PM25", "CO", "SO2"):
+        return 1 + 0.35 * np.cos(2 * np.pi * (month - 1) / 12)
+    elif poll == "O3":
+        return 1 + 0.45 * np.sin(2 * np.pi * (month - 5) / 12 + np.pi / 2)
+    return 1 + 0.15 * np.cos(2 * np.pi * (month - 1) / 12)
+
+def _weekly(dow, poll):
+    if poll == "O3":
+        return np.where(dow >= 5, 1.08, 1.0)
+    return np.where(dow == 0, 1.05, 1.0) * np.where(np.isin(dow, [1,2,3]), 1.12, 1.0) * np.where(dow >= 5, 0.78, 1.0)
+
+def _hourly(hour, poll):
+    if poll == "O3":
+        return 1 + 0.70 * np.exp(-((hour - 15)**2) / 20)
+    return 1 + 0.55 * (np.exp(-((hour - 8)**2)/6) + np.exp(-((hour - 19)**2)/8))
+
+def _covid(ts, poll):
+    f = np.ones(len(ts))
+    s = (ts >= "2020-03-23") & (ts <= "2020-06-01")
+    p = (ts >= "2020-06-02") & (ts <= "2020-09-01")
+    reductions = {"NO2":(0.55,0.78),"CO":(0.58,0.80),"PM25":(0.65,0.82),"SO2":(0.70,0.85),"O3":(1.10,1.05)}
+    sf, pf = reductions.get(poll, (0.75, 0.88))
+    f[s] = sf; f[p] = pf
+    return f
+
+SYNTHETIC_BASES = {
+    "CDMX":        {"PM25": 0.025, "O3": 0.065, "NO2": 0.050, "CO": 1.2,  "SO2": 0.008},
+    "Monterrey":   {"PM25": 0.028, "O3": 0.060, "NO2": 0.045, "CO": 1.5,  "SO2": 0.010},
+    "Guadalajara": {"PM25": 0.020, "O3": 0.050, "NO2": 0.035, "CO": 1.0,  "SO2": 0.006},
+}
+
+def generate_synthetic_data() -> pd.DataFrame:
+    """Genera datos sintéticos en el mismo formato largo que process_real_data()."""
+    log.info("Generando datos sintéticos (fallback) ...")
+    rng = np.random.default_rng(42)
+    ts  = pd.date_range("2019-01-01", "2024-12-31", freq="h")
+    month_a = ts.month.values.astype(float)
+    dow_a   = ts.dayofweek.values
+    hour_a  = ts.hour.values.astype(float)
+    year_a  = ts.year.values
+
+    rows = []
+    for ciudad, bases in SYNTHETIC_BASES.items():
+        for poll, base in bases.items():
+            sig = (base
+                   * _seasonal(month_a, poll)
+                   * _weekly(dow_a, poll)
+                   * _hourly(hour_a, poll)
+                   * _covid(ts, poll)
+                   * (1 - 0.02 * (year_a - 2019)))
+            vals = np.maximum(0.0, sig + rng.normal(0, base * 0.08, len(ts)))
+            vals[rng.random(len(ts)) < 0.03] = np.nan
+            chunk = pd.DataFrame({"fecha": ts, "hora": ts.hour, "valor": vals,
+                                  "ciudad": ciudad, "contaminante": poll})
+            rows.append(chunk)
+
+    df = pd.concat(rows, ignore_index=True).dropna(subset=["valor"])
+    log.info(f"Datos sintéticos generados: {len(df):,} filas")
+    return df
+
+
+# ─── Entry point ──────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="Pipeline SINAICA – calidad del aire México")
+    parser.add_argument("--synthetic", action="store_true",
+                        help="Fuerza el uso de datos sintéticos aunque existan CSVs reales")
     args = parser.parse_args()
 
-    if args.generate or not list(RAW_DIR.glob("*.csv")):
-        log.info("Generando datos sintéticos en data/raw/ ...")
-        generate_synthetic_raw()
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.synthetic or not DB_DIR.exists():
+        if not DB_DIR.exists():
+            log.info(f"No se encontró {DB_DIR}. Usando datos sintéticos.")
+        df_raw = generate_synthetic_data()
     else:
-        log.info(f"Se usarán los CSVs existentes en {RAW_DIR}")
+        log.info(f"Leyendo datos reales de {DB_DIR} ...")
+        df_raw = process_real_data()
 
-    log.info("Cargando datos crudos...")
-    df_raw = load_raw()
+    log.info("Limpiando y enriqueciendo ...")
+    df_clean = clean_and_enrich(df_raw)
 
-    log.info("Limpiando datos...")
-    df_clean = clean(df_raw)
+    log.info("Construyendo agregados ...")
+    outputs = build_all_aggregates(df_clean)
 
-    log.info("Generando agregados...")
-    daily, weekly_pattern, monthly = build_aggregates(df_clean)
-
-    log.info("Guardando resultados...")
-    save(daily, weekly_pattern, monthly)
+    log.info("Guardando ...")
+    save_all(*outputs)
 
     log.info("¡Proceso completado exitosamente!")
 

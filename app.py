@@ -25,10 +25,10 @@ PROCESSED_DIR = Path(__file__).parent / "data" / "processed"
 
 POLLUTANT_LABELS = {
     "PM25": "PM2.5 (μg/m³)",
-    "O3":   "Ozono O₃ (ppb)",
-    "NO2":  "Dióxido de nitrógeno NO₂ (ppb)",
+    "O3":   "Ozono O₃ (ppm)",
+    "NO2":  "Dióxido de nitrógeno NO₂ (ppm)",
     "CO":   "Monóxido de carbono CO (ppm)",
-    "SO2":  "Dióxido de azufre SO₂ (ppb)",
+    "SO2":  "Dióxido de azufre SO₂ (ppm)",
 }
 
 POLLUTANT_DESC = {
@@ -109,21 +109,24 @@ if not check_data():
 
 # ─── ENCABEZADO ───────────────────────────────────────────────────────────────
 
-st.markdown('<span class="tag">Calidad del aire · México 2019–2024</span>', unsafe_allow_html=True)
+st.markdown('<span class="tag">Calidad del aire · Datos reales SINAICA 2019–2024</span>', unsafe_allow_html=True)
 st.title("💨 ¿Respiramos peor en lunes?")
-st.subheader("Patrones temporales de contaminación en las ciudades más sucias de México")
+st.subheader("Patrones temporales de contaminación en CDMX, Monterrey y Guadalajara")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 El aire que respiramos no es igual todos los días. En las ciudades mexicanas con peor calidad del
 aire, la concentración de contaminantes sigue ritmos casi tan predecibles como el tráfico: sube
 cuando arrancamos el motor, baja cuando nos quedamos en casa y colapsa cuando el mundo entero
-se detiene. Esta historia analiza datos de **SINAICA** (Sistema Nacional de Información de la
-Calidad del Aire, INECC) para seis ciudades durante el período 2019–2024.
+se detiene.
 
-Seguimos cinco contaminantes clave: PM2.5, O₃, NO₂, CO y SO₂. La pregunta que nos guía es
-deceptivamente simple: **¿hay un día de la semana en que el aire está peor?** La respuesta,
-como veremos, es más matizada —y más interesante— de lo que parece.
+Esta historia analiza **datos reales de SINAICA** (Sistema Nacional de Información de la
+Calidad del Aire, INECC) provenientes de decenas de estaciones de monitoreo en tres de las
+zonas metropolitanas más contaminadas del país: **Ciudad de México**, **Monterrey** y
+**Guadalajara**. El período cubre 2019 a 2024, con cinco contaminantes: PM2.5, O₃, NO₂, CO y SO₂.
+
+La pregunta que nos guía es deceptivamente simple: **¿hay un día de la semana en que el aire
+está peor?** La respuesta, como veremos, es más matizada —y más interesante— de lo que parece.
 """)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -137,11 +140,13 @@ st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Antes de entrar al análisis semanal, conviene ubicarnos en el mapa. No todas las ciudades
 contaminan igual, y los factores que explican la diferencia van más allá del tamaño poblacional.
-**Mexicali**, en la frontera con California, sufre contaminación transfronteriza sumada al uso
-intensivo de calefacción y quema de biomasa en invierno. **Monterrey** tiene un perfil industrial
-marcado con emisiones de fundidoras y cementeras. La **Ciudad de México**, contra la intuición popular,
-ha mejorado considerablemente gracias al programa de verificación vehicular y la expansión del transporte público.
+**Guadalajara** presenta en años recientes niveles de PM2.5 sorprendentemente altos —superando
+a la CDMX—, ligados al crecimiento vehicular y a la quema agrícola estacional en el Bajío.
+**Monterrey** tiene un perfil industrial marcado con emisiones de fundidoras, cementeras y la
+refinería de Cadereyta. La **Ciudad de México**, contra la intuición popular, ha mejorado
+considerablemente gracias al programa de verificación vehicular y la expansión del transporte público.
 """)
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 daily = load_daily()
@@ -162,9 +167,14 @@ ranking = (
     daily[daily["anio"] == year_s1]
     .groupby("ciudad")[poll_s1]
     .mean()
+    .dropna()
     .reset_index()
     .sort_values(poll_s1, ascending=True)
 )
+
+unit = POLLUTANT_LABELS[poll_s1].split("(")[-1].replace(")", "")
+# Formato de texto en barras: 4 decimales para ppm, 1 para µg/m³
+fmt = "%{text:.4f}" if "ppm" in unit else "%{text:.1f}"
 
 fig1 = px.bar(
     ranking, x=poll_s1, y="ciudad", orientation="h",
@@ -173,10 +183,10 @@ fig1 = px.bar(
     title=f"Promedio anual de {POLLUTANT_LABELS[poll_s1]} por ciudad — {year_s1}",
     text=poll_s1,
 )
-fig1.update_traces(texttemplate="%{text:.1f}", textposition="outside", marker_line_width=0)
+fig1.update_traces(texttemplate=fmt, textposition="outside", marker_line_width=0)
 fig1.update_layout(
     coloraxis_showscale=False, plot_bgcolor="white",
-    margin=dict(l=10, r=60, t=50, b=20), height=360,
+    margin=dict(l=10, r=80, t=50, b=20), height=300,
     font=dict(family="Inter, sans-serif"),
 )
 fig1.update_xaxes(showgrid=True, gridcolor="#f0f0f0", title_font_size=12)
@@ -185,16 +195,19 @@ fig1.update_yaxes(tickfont_size=13)
 with col_chart:
     st.plotly_chart(fig1, use_container_width=True)
 
-top_city = ranking.iloc[-1]["ciudad"]
-top_val = ranking.iloc[-1][poll_s1]
-unit = POLLUTANT_LABELS[poll_s1].split("(")[-1].replace(")", "")
-st.markdown(
-    f'<div class="callout">📍 <strong>{top_city}</strong> encabeza el ranking con '
-    f'un promedio de <strong>{top_val:.1f} {unit}</strong> en {year_s1}. '
-    f'El rango entre la ciudad más limpia y la más contaminada puede ser de hasta '
-    f'<strong>{ranking[poll_s1].max() / ranking[poll_s1].min():.1f}×</strong>.</div>',
-    unsafe_allow_html=True,
-)
+if len(ranking) > 0:
+    top_city = ranking.iloc[-1]["ciudad"]
+    top_val  = ranking.iloc[-1][poll_s1]
+    ratio_str = (f" El rango entre la ciudad más limpia y la más contaminada es de "
+                 f"<strong>{ranking[poll_s1].max() / ranking[poll_s1].min():.1f}×</strong>."
+                 if len(ranking) > 1 else "")
+    st.markdown(
+        f'<div class="callout">📍 <strong>{top_city}</strong> encabeza el ranking con '
+        f'un promedio de <strong>{top_val:.4g} {unit}</strong> en {year_s1}.{ratio_str}</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.info(f"Sin datos disponibles para {POLLUTANT_LABELS[poll_s1]} en {year_s1}.")
 
 st.divider()
 
@@ -288,9 +301,10 @@ monthly = load_monthly()
 col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
     all_cities = sorted(monthly["ciudad"].unique())
+    default_cities = [c for c in ["CDMX", "Monterrey", "Guadalajara"] if c in all_cities]
     cities_s3 = st.multiselect(
         "Ciudades", all_cities,
-        default=["Mexicali", "Monterrey", "CDMX"],
+        default=default_cities,
         key="s3_cities",
     )
 with col2:
@@ -313,6 +327,9 @@ else:
         (monthly["anio"] >= year_range[0]) &
         (monthly["anio"] <= year_range[1])
     ]
+
+    # Elimina filas sin dato para ese contaminante (meses no monitoreados)
+    mdf = mdf.dropna(subset=[poll_s3])
 
     fig3 = px.line(
         mdf, x="fecha_mes", y=poll_s3, color="ciudad",
@@ -378,10 +395,11 @@ laborales es mayor y la atmósfera lleva días absorbiendo. El lunes es el *arra
 urbana en México es el transporte y la industria, no el clima ni la geografía. En pocas
 semanas, el aire mejoró más de lo que han logrado décadas de política ambiental.
 
-**3. Las ciudades no son iguales.** Mexicali sufre contaminación mixta (transfronteriza +
-calefacción local). Monterrey tiene un perfil industrial marcado. La CDMX ha reducido
-emisiones con política pública activa. Tijuana muestra que la cercanía a California tiene
-efectos ambientales en ambas direcciones.
+**3. Las ciudades no son iguales.** Guadalajara, sorprendentemente, supera a la CDMX en PM2.5
+en años recientes: su crecimiento urbano no planificado y la quema agrícola regional explican
+el deterioro. Monterrey mantiene niveles altos de CO y SO₂ ligados a su actividad industrial.
+La CDMX ha logrado reducciones reales de PM2.5 gracias a política pública activa, aunque
+el rebote post-COVID fue rápido y completo.
 
 La conclusión es incómoda: **el aire mejora cuando paramos, y empeora cuando arrancamos**.
 La pregunta de política pública ya no es técnica —es de voluntad colectiva.
