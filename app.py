@@ -13,11 +13,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# ─── Configuración de página ──────────────────────────────────────────────────
+# Configuración de página
 
 st.set_page_config(
-    page_title="¿Respiramos peor en lunes?",
-    page_icon="💨",
+    page_title="¿En que día de la semana respiramos peor?",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -158,12 +158,12 @@ Calidad del Aire, INECC) provenientes de decenas de estaciones de monitoreo en t
 zonas metropolitanas más contaminadas del país: **Ciudad de México**, **Monterrey** y
 **Guadalajara**. El período cubre 2019 a 2024, con cinco contaminantes: PM2.5, O₃, NO₂, CO y SO₂.
 
-La pregunta que nos guía es deceptivamente simple: **¿hay un día de la semana en que el aire
+La pregunta que nos guía es  simple: **¿hay un día de la semana en que el aire
 está peor?** La respuesta, como veremos, es más matizada —y más interesante— de lo que parece.
 """)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Métricas destacadas ───────────────────────────────────────────────────────
+# Métricas destacadas 
 m1, m2, m3 = st.columns(3)
 with m1:
     st.metric("📊 Estaciones analizadas", "47 estaciones")
@@ -174,11 +174,11 @@ with m3:
 
 st.divider()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 1 · Ranking de ciudades
-# ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 🏭 1 · ¿Cuáles son las ciudades más contaminadas?")
+# SECCIÓN 1 · Ranking de ciudades ------------------------------------------------------------------
+
+
+st.markdown("## 1 · ¿Cuáles son las ciudades más contaminadas?")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -217,9 +217,6 @@ prev_avgs    = (daily[daily["anio"] == year_s1 - 1].groupby("ciudad")[poll_s1].m
 ranking = current_avgs.reset_index()
 ranking.columns = ["ciudad", "valor"]
 ranking = ranking.sort_values("valor", ascending=False)
-
-# Añadir emoji al label de ciudad
-ranking["ciudad_label"] = ranking["ciudad"].apply(_city_label)
 
 
 def _yoy(city: str) -> str:
@@ -283,11 +280,10 @@ else:
 
 st.divider()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 2 · Heatmap día × hora
-# ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 📅 2 · ¿Respiramos peor en lunes? El patrón semanal")
+# SECCIÓN 2 · Heatmap día × hora -------------------------------------------------------------------
+
+st.markdown("## 📅 2 · El patrón semanal")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -355,7 +351,7 @@ fig2 = go.Figure(go.Heatmap(
     colorbar=dict(title=dict(text=unit_s2, side="right")),
 ))
 
-# ── Anotación en la celda de pico máximo ──────────────────────────────────────
+# Etiqueta en la celda de pico máximo 
 if not np.all(np.isnan(vals2)):
     max_idx = np.unravel_index(np.nanargmax(vals2), vals2.shape)
     max_day  = list(pivot2.index)[max_idx[0]]
@@ -394,11 +390,10 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 3 · Boxplot mensual
-# ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 🌿 3 · ¿Qué meses respiramos peor?")
+# SECCIÓN 3 · Boxplot mensual ----------------------------------------------------------------------
+
+st.markdown("## 3 · ¿Qué meses respiramos peor?")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -487,7 +482,7 @@ st.divider()
 # SECCIÓN 4 · Serie temporal y COVID
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("## 🦠 4 · El COVID-19 como experimento natural")
+st.markdown("## 4 · El COVID-19 como experimento natural")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -612,7 +607,7 @@ st.divider()
 
 # ─── CONCLUSIONES ─────────────────────────────────────────────────────────────
 
-st.markdown("## 💡 Conclusiones")
+st.markdown("## Conclusiones")
 
 st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
@@ -643,7 +638,7 @@ st.divider()
 
 st.markdown(
     '<div class="footer">'
-    'Autor: Alexander Góngora &nbsp;|&nbsp; '
+    'Autor: Alexander Góngora Venegas &nbsp;|&nbsp; '
     'Fuente: SINAICA – INECC '
     '(<a href="https://sinaica.inecc.gob.mx/" target="_blank">sinaica.inecc.gob.mx</a>) '
     '&nbsp;|&nbsp; Datos descargados: abril 2026'
