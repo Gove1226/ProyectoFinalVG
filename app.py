@@ -1,5 +1,5 @@
 """
-¿Respiramos peor en lunes? — Visualización interactiva de calidad del aire en México
+ Visualización interactiva de calidad del aire en México
 Autor: Alexander Góngora Venegas
 Curso: Visualización gráfica para IA – Universidad Iberoamericana León
 Docente: Dra. Dora Alvarado
@@ -13,10 +13,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Configuración de página
+# ─── Configuración ────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="¿En que día de la semana respiramos peor?",
+    page_title="¿En qué día de la semana respiramos peor?",
     page_icon="",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -40,7 +40,6 @@ POLLUTANT_DESC = {
     "SO2":  "dióxido de azufre — asociado a industria y generación eléctrica",
 }
 
-# Normas oficiales NOM-025-SSA1-2021
 NORMAS = {
     "PM25": 45.0,
     "NO2":  0.21,
@@ -60,23 +59,12 @@ MONTH_NAMES_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
 
 CITY_COLORS = px.colors.qualitative.Set2
 
-# Emojis de ciudad para etiquetas
-CITY_EMOJI = {
-    "CDMX":        "🌆 CDMX",
-    "Monterrey":   "🏔️ Monterrey",
-    "Guadalajara": "🌺 Guadalajara",
-}
-
 
 def _unit(poll: str) -> str:
     return POLLUTANT_LABELS[poll].split("(")[-1].replace(")", "")
 
 
-def _city_label(city: str) -> str:
-    return CITY_EMOJI.get(city, city)
-
-
-# ─── CSS personalizado ────────────────────────────────────────────────────────
+# ─── CSS ──────────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
@@ -84,7 +72,7 @@ st.markdown("""
   h1 { font-size: 2.5rem !important; line-height: 1.2; }
   h2 { font-size: 1.55rem !important; color: #FF6B35 !important;
        border-bottom: 2px solid #FF6B35; padding-bottom: 6px; margin-top: 2rem; }
-  .narr { font-size: 1.05rem; line-height: 1.75; color: #1a1a1a; }
+  .narr { font-size: 1.05rem; line-height: 1.75; color: #e0e0e0; }
   .callout {
     background: #2a2a2a;
     color: #ffffff;
@@ -98,7 +86,7 @@ st.markdown("""
   .callout strong { color: #FF6B35; }
   .footer {
     font-size: 0.82rem; color: #888; margin-top: 50px;
-    border-top: 1px solid #eee; padding-top: 14px;
+    border-top: 1px solid #333; padding-top: 14px;
   }
   .tag {
     display: inline-block; background: #fde8d8;
@@ -126,12 +114,8 @@ def load_monthly() -> pd.DataFrame:
     return pd.read_parquet(PROCESSED_DIR / "monthly_series.parquet")
 
 
-def check_data() -> bool:
-    return all((PROCESSED_DIR / f"{n}.parquet").exists()
-               for n in ("daily_avg", "weekly_pattern", "monthly_series"))
-
-
-if not check_data():
+if not all((PROCESSED_DIR / f"{n}.parquet").exists()
+           for n in ("daily_avg", "weekly_pattern", "monthly_series")):
     st.error(
         "No se encontraron datos procesados en `data/processed/`. "
         "Ejecuta primero:\n\n```\npython src/data_processing.py\n```"
@@ -143,54 +127,49 @@ if not check_data():
 
 st.markdown('<span class="tag">Calidad del aire · Datos reales SINAICA 2019–2024</span>',
             unsafe_allow_html=True)
-st.title("💨 ¿Respiramos peor en lunes?")
+st.title("¿En qué día de la semana respiramos peor?")
 st.subheader("Patrones temporales de contaminación en CDMX, Monterrey y Guadalajara")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 El aire que respiramos no es igual todos los días. En las ciudades mexicanas con peor calidad del
 aire, la concentración de contaminantes sigue ritmos casi tan predecibles como el tráfico: sube
 cuando arrancamos el motor, baja cuando nos quedamos en casa y colapsa cuando el mundo entero
 se detiene.
 
-Esta historia analiza **datos reales de SINAICA** (Sistema Nacional de Información de la
-Calidad del Aire, INECC) provenientes de decenas de estaciones de monitoreo en tres de las
-zonas metropolitanas más contaminadas del país: **Ciudad de México**, **Monterrey** y
-**Guadalajara**. El período cubre 2019 a 2024, con cinco contaminantes: PM2.5, O₃, NO₂, CO y SO₂.
+Este análisis usa **datos reales de SINAICA** (Sistema Nacional de Información de la
+Calidad del Aire, INECC) de estaciones de monitoreo en tres zonas metropolitanas:
+**Ciudad de México**, **Monterrey** y **Guadalajara** — cubriendo 2019 a 2024
+con cinco contaminantes: PM2.5, O₃, NO₂, CO y SO₂.
 
-La pregunta que nos guía es  simple: **¿hay un día de la semana en que el aire
-está peor?** La respuesta, como veremos, es más matizada —y más interesante— de lo que parece.
+La pregunta que nos guía es simple: **¿hay un día de la semana en que el aire está peor?**
+La respuesta es más interesante de lo que parece.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
-# Métricas destacadas 
 m1, m2, m3 = st.columns(3)
-with m1:
-    st.metric("📊 Estaciones analizadas", "47 estaciones")
-with m2:
-    st.metric("📅 Período cubierto", "2019 – 2024")
-with m3:
-    st.metric("🏙️ Zonas metropolitanas", "3 ciudades")
+m1.metric("Estaciones analizadas", "47")
+m2.metric("Período cubierto", "2019 – 2024")
+m3.metric("Zonas metropolitanas", "3 ciudades")
 
 st.divider()
 
 
 # SECCIÓN 1 · Ranking de ciudades ------------------------------------------------------------------
 
-
 st.markdown("## 1 · ¿Cuáles son las ciudades más contaminadas?")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Antes de entrar al análisis semanal, conviene ubicarnos en el mapa. No todas las ciudades
 contaminan igual, y los factores que explican la diferencia van más allá del tamaño poblacional.
+
 **Guadalajara** presenta en años recientes niveles de PM2.5 sorprendentemente altos —superando
 a la CDMX—, ligados al crecimiento vehicular y a la quema agrícola estacional en el Bajío.
+
 **Monterrey** tiene un perfil industrial marcado con emisiones de fundidoras, cementeras y la
-refinería de Cadereyta. La **Ciudad de México**, contra la intuición popular, ha mejorado
+refinería de Cadereyta. 
+
+La **Ciudad de México**, contra la intuición popular, ha mejorado
 considerablemente gracias al programa de verificación vehicular y la expansión del transporte público.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 daily = load_daily()
 
@@ -202,17 +181,19 @@ with col_ctrl:
         "Contaminante", list(POLLUTANT_LABELS.keys()),
         format_func=lambda x: POLLUTANT_LABELS[x], key="s1_poll"
     )
-    available_years = sorted(daily["anio"].unique(), reverse=True)
-    year_s1 = st.selectbox("Año", available_years, key="s1_year")
+    year_s1 = st.selectbox(
+        "Año", sorted(daily["anio"].unique(), reverse=True), key="s1_year"
+    )
     st.caption(f"Mostrando: {POLLUTANT_DESC[poll_s1]}")
 
 unit_s1 = _unit(poll_s1)
 min_year = int(daily["anio"].min())
 
-# Promedios año actual y anterior para comparación interanual
 current_avgs = daily[daily["anio"] == year_s1].groupby("ciudad")[poll_s1].mean().dropna()
-prev_avgs    = (daily[daily["anio"] == year_s1 - 1].groupby("ciudad")[poll_s1].mean().dropna()
-                if year_s1 > min_year else pd.Series(dtype=float))
+prev_avgs = (
+    daily[daily["anio"] == year_s1 - 1].groupby("ciudad")[poll_s1].mean().dropna()
+    if year_s1 > min_year else pd.Series(dtype=float)
+)
 
 ranking = current_avgs.reset_index()
 ranking.columns = ["ciudad", "valor"]
@@ -220,7 +201,6 @@ ranking = ranking.sort_values("valor", ascending=False)
 
 
 def _yoy(city: str) -> str:
-    """Etiqueta de cambio interanual, ej: '↑ 8.3 % vs 2022'."""
     if city not in prev_avgs.index:
         return "Sin dato año anterior"
     pct = (current_avgs[city] - prev_avgs[city]) / prev_avgs[city] * 100
@@ -231,15 +211,11 @@ def _yoy(city: str) -> str:
 ranking["yoy"] = ranking["ciudad"].apply(_yoy)
 
 fig1 = go.Figure(go.Bar(
-    y=ranking["ciudad_label"],
+    y=ranking["ciudad"],
     x=ranking["valor"],
     orientation="h",
-    marker=dict(
-        color=ranking["valor"],
-        colorscale="Oranges",
-        showscale=False,
-    ),
-    customdata=np.stack([ranking["ciudad_label"], ranking["yoy"]], axis=1),
+    marker=dict(color=ranking["valor"], colorscale="Oranges", showscale=False),
+    customdata=np.stack([ranking["ciudad"], ranking["yoy"]], axis=1),
     hovertemplate=(
         "<b>%{customdata[0]}</b><br>"
         f"Promedio {year_s1}: %{{x:.4g}} {unit_s1}<br>"
@@ -263,29 +239,25 @@ with col_chart:
 
 if len(ranking) > 0:
     top_city = ranking.iloc[0]["ciudad"]
-    top_label = ranking.iloc[0]["ciudad_label"]
-    top_val   = ranking.iloc[0]["valor"]
+    top_val = ranking.iloc[0]["valor"]
     ratio_str = (
         f" El rango entre la más limpia y la más contaminada es de "
         f"<strong>{ranking['valor'].max() / ranking['valor'].min():.1f}×</strong>."
         if len(ranking) > 1 else ""
     )
     st.markdown(
-        f'<div class="callout">📍 <strong>{top_label}</strong> encabeza el ranking con '
+        f'<div class="callout">📍 <strong>{top_city}</strong> encabeza el ranking con '
         f'un promedio de <strong>{top_val:.4g} {unit_s1}</strong> en {year_s1}.{ratio_str}</div>',
         unsafe_allow_html=True,
     )
-else:
-    st.info(f"Sin datos disponibles para {POLLUTANT_LABELS[poll_s1]} en {year_s1}.")
 
 st.divider()
 
 
-# SECCIÓN 2 · Heatmap día × hora -------------------------------------------------------------------
+# ─── SECCIÓN 2 · Heatmap semanal ─────────────────────────────────────────────
 
-st.markdown("## 📅 2 · El patrón semanal")
+st.markdown("## 2 · El patrón semanal")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Si la contaminación fuera aleatoria, no veríamos ningún patrón consistente por día de semana.
 Pero los motores de combustión, las fábricas y las cocinas industriales siguen horarios laborales.
@@ -298,7 +270,6 @@ el mapa se aclara notablemente.
 El **ozono** tiene un comportamiento opuesto: aumenta en fines de semana porque hay menos
 monóxido de nitrógeno (NO) que lo destruya —el llamado "efecto fin de semana".
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 wdf = load_weekly_pattern()
 
@@ -312,7 +283,6 @@ with col2:
     )
 
 unit_s2 = _unit(poll_s2)
-
 sub2 = wdf[wdf["ciudad"] == city_s2].copy()
 pivot2 = (
     sub2.pivot_table(index="nombre_dia", columns="hora", values=poll_s2)
@@ -323,7 +293,6 @@ pivot2.index = [DAY_ES.get(d, d) for d in pivot2.index]
 vals2 = pivot2.values
 global_avg2 = float(np.nanmean(vals2)) if not np.all(np.isnan(vals2)) else 1.0
 
-# Matriz de hover personalizado
 hover2 = []
 for day_es in pivot2.index:
     row = []
@@ -332,7 +301,7 @@ for day_es in pivot2.index:
         if pd.isna(val):
             row.append("Sin datos")
         else:
-            pct  = (val - global_avg2) / global_avg2 * 100
+            pct = (val - global_avg2) / global_avg2 * 100
             sign = "sobre" if pct >= 0 else "bajo"
             row.append(
                 f"<b>{day_es} {h:02d}h</b><br>"
@@ -351,17 +320,14 @@ fig2 = go.Figure(go.Heatmap(
     colorbar=dict(title=dict(text=unit_s2, side="right")),
 ))
 
-# Etiqueta en la celda de pico máximo 
 if not np.all(np.isnan(vals2)):
     max_idx = np.unravel_index(np.nanargmax(vals2), vals2.shape)
-    max_day  = list(pivot2.index)[max_idx[0]]
-    max_hour = f"{pivot2.columns[max_idx[1]]:02d}h"
     fig2.add_annotation(
-        x=max_hour, y=max_day,
+        x=f"{pivot2.columns[max_idx[1]]:02d}h",
+        y=list(pivot2.index)[max_idx[0]],
         text="pico máximo",
         showarrow=False,
         font=dict(color="white", size=9, family="Inter"),
-        xref="x", yref="y",
     )
 
 fig2.update_layout(
@@ -379,23 +345,20 @@ fig2.update_layout(
 
 st.plotly_chart(fig2, use_container_width=True)
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 **¿Por qué el lunes no siempre es el peor?** El lunes concentra el *arranque* de la semana:
 motores fríos, más viajes en auto, industria a plena capacidad después del descanso. Pero el
 acumulado de emisiones a lo largo de los días laborales puede hacer que martes o miércoles
-sean aún peores —especialmente en ciudades con mucha industria como Monterrey.
+sean aún peores (especialmente en ciudades con mucha industria como Monterrey.)
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
 
-# SECCIÓN 3 · Boxplot mensual ----------------------------------------------------------------------
+# ─── SECCIÓN 3 · Boxplot mensual ─────────────────────────────────────────────
 
 st.markdown("## 3 · ¿Qué meses respiramos peor?")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 No todos los meses son iguales. La quema agrícola de primavera, los incendios forestales de
 verano y la inversión térmica de invierno crean patrones estacionales tan consistentes como el
@@ -403,63 +366,41 @@ calendario mismo. Cada caja muestra la dispersión real de todos los días de es
 y 2024: la línea central es la mediana, la caja contiene el 50% de los días, y los puntos son
 episodios extraordinarios.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 poll_s3 = st.selectbox(
     "Contaminante", list(POLLUTANT_LABELS.keys()),
     format_func=lambda x: POLLUTANT_LABELS[x], key="s3_poll"
 )
-
 unit_s3 = _unit(poll_s3)
 
-# Preparar datos: daily tiene columna 'mes' (1-12) y el contaminante
 box_df = daily[["ciudad", "mes", poll_s3]].dropna(subset=[poll_s3]).copy()
 box_df["mes_nombre"] = box_df["mes"].apply(lambda m: MONTH_NAMES_ES[int(m) - 1])
-# Convertir a categórico con orden cronológico para que px.box respete el orden
-box_df["mes_nombre"] = pd.Categorical(
-    box_df["mes_nombre"], categories=MONTH_NAMES_ES, ordered=True
-)
+box_df["mes_nombre"] = pd.Categorical(box_df["mes_nombre"], categories=MONTH_NAMES_ES, ordered=True)
 box_df = box_df.sort_values("mes_nombre")
 
-# Añadir emoji al label de ciudad para colorear
-box_df["ciudad_label"] = box_df["ciudad"].apply(_city_label)
-
 fig_box = px.box(
-    box_df,
-    x="mes_nombre",
-    y=poll_s3,
-    color="ciudad_label",
+    box_df, x="mes_nombre", y=poll_s3, color="ciudad",
     points="outliers",
     color_discrete_sequence=CITY_COLORS,
-    labels={
-        "mes_nombre":    "Mes",
-        poll_s3:         POLLUTANT_LABELS[poll_s3],
-        "ciudad_label":  "Ciudad",
-    },
+    labels={"mes_nombre": "Mes", poll_s3: POLLUTANT_LABELS[poll_s3], "ciudad": "Ciudad"},
     title=f"Distribución mensual de {POLLUTANT_LABELS[poll_s3]} por ciudad (2019–2024)",
     category_orders={"mes_nombre": MONTH_NAMES_ES},
 )
 
-# Línea horizontal de norma NOM-025
 if poll_s3 in NORMAS:
-    norma_val_s3 = NORMAS[poll_s3]
     fig_box.add_hline(
-        y=norma_val_s3,
+        y=NORMAS[poll_s3],
         line_dash="dot", line_color="#7f8c8d", line_width=1.5,
-        annotation_text=f"Norma NOM-025: {norma_val_s3} {unit_s3}",
+        annotation_text=f"Norma NOM-025: {NORMAS[poll_s3]} {unit_s3}",
         annotation_position="bottom right",
         annotation=dict(font_size=10, font_color="#7f8c8d"),
     )
 
 fig_box.update_layout(
-    plot_bgcolor="white",
-    height=480,
+    plot_bgcolor="white", height=480,
     margin=dict(l=10, r=10, t=55, b=40),
     font=dict(family="Inter, sans-serif"),
-    legend=dict(
-        title_text="Ciudad",
-        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-    ),
+    legend=dict(title_text="Ciudad", orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     xaxis=dict(showgrid=False),
     yaxis=dict(showgrid=True, gridcolor="#f0f0f0"),
     boxmode="group",
@@ -467,24 +408,20 @@ fig_box.update_layout(
 
 st.plotly_chart(fig_box, use_container_width=True)
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Guadalajara muestra sus peores meses entre marzo y mayo — la temporada de quema de caña y
 rastrojo agrícola en el Bajío. Monterrey, en cambio, tiene picos en invierno por la inversión
 térmica que atrapa las emisiones industriales cerca del suelo. La CDMX es la más estable del
 grupo: sus programas de verificación vehicular han aplanado los picos estacionales.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 4 · Serie temporal y COVID
-# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── SECCIÓN 4 · Serie temporal y COVID ──────────────────────────────────────
 
 st.markdown("## 4 · El COVID-19 como experimento natural")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 En marzo de 2020, México entró en confinamiento. De la noche a la mañana, el tráfico
 desapareció, las fábricas pararon y los cielos se despejaron. Fue el experimento científico
@@ -495,19 +432,17 @@ vehicular— cayeron entre 30 y 45 % en todas las ciudades. El PM2.5 también ba
 menos, porque parte viene de fuentes que no pararon (industria pesada, incendios forestales).
 El ozono, paradójicamente, *subió* en algunas ciudades: sin NO que lo destruya, se acumula.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 monthly = load_monthly()
-
-# Filtrar hasta 2024 para que el eje X no muestre 2025
 monthly = monthly[monthly["anio"] <= 2024].copy()
 
-col1, col2 = st.columns([2, 2])
+col1, col2 = st.columns(2)
 with col1:
     all_cities = sorted(monthly["ciudad"].unique())
-    default_cities = [c for c in ["CDMX", "Monterrey", "Guadalajara"] if c in all_cities]
     cities_s4 = st.multiselect(
-        "Ciudades", all_cities, default=default_cities, key="s4_cities"
+        "Ciudades", all_cities,
+        default=[c for c in ["CDMX", "Monterrey", "Guadalajara"] if c in all_cities],
+        key="s4_cities"
     )
 with col2:
     poll_s4 = st.selectbox(
@@ -515,11 +450,8 @@ with col2:
         format_func=lambda x: POLLUTANT_LABELS[x], key="s4_poll"
     )
 
-# Multiselect de años individuales (reemplaza slider)
 all_years = sorted(monthly["anio"].unique())
-years_s4 = st.multiselect(
-    "Años a mostrar", all_years, default=all_years, key="s4_years"
-)
+years_s4 = st.multiselect("Años a mostrar", all_years, default=all_years, key="s4_years")
 
 unit_s4 = _unit(poll_s4)
 
@@ -541,42 +473,31 @@ else:
         markers=True,
     )
 
-    # ── Banda del confinamiento ──────────────────────────────────────────────
     fig3.add_vrect(
         x0="2020-03", x1="2020-06",
-        fillcolor="rgba(255,100,100,0.15)", line_width=0,
-        layer="below",
+        fillcolor="rgba(255,100,100,0.15)", line_width=0, layer="below",
     )
-
-    # ── Línea vertical inicio confinamiento (add_shape — bug fix datetime) ───
     fig3.add_shape(
         type="line",
-        x0="2020-03", x1="2020-03",
-        y0=0, y1=1,
+        x0="2020-03", x1="2020-03", y0=0, y1=1,
         xref="x", yref="paper",
         line=dict(color="rgba(255,255,255,0.6)", width=2, dash="dash"),
     )
     fig3.add_annotation(
-        x="2020-03", y=1,
-        xref="x", yref="paper",
+        x="2020-03", y=1, xref="x", yref="paper",
         text="← Confinamiento COVID-19 (mar–jun 2020)",
         showarrow=False,
         font=dict(color="#c0392b", size=11, family="Inter"),
         bgcolor="rgba(255,240,240,0.85)",
-        bordercolor="#e74c3c",
-        borderwidth=1,
-        borderpad=4,
-        yanchor="bottom",
-        xanchor="left",
+        bordercolor="#e74c3c", borderwidth=1, borderpad=4,
+        yanchor="bottom", xanchor="left",
     )
 
-    # ── Norma oficial ────────────────────────────────────────────────────────
     if poll_s4 in NORMAS:
-        norma_val = NORMAS[poll_s4]
         fig3.add_hline(
-            y=norma_val,
+            y=NORMAS[poll_s4],
             line_dash="dot", line_color="#7f8c8d", line_width=1.5,
-            annotation_text=f"Norma NOM-025: {norma_val} {unit_s4}",
+            annotation_text=f"Norma NOM-025: {NORMAS[poll_s4]} {unit_s4}",
             annotation_position="bottom right",
             annotation=dict(font_size=10, font_color="#7f8c8d"),
         )
@@ -593,7 +514,6 @@ else:
 
     st.plotly_chart(fig3, use_container_width=True)
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Después del confinamiento, los niveles regresaron casi al punto de partida en la mayoría
 de las ciudades. Esto confirma que el problema es **estructural**: mientras dependamos de
@@ -601,15 +521,14 @@ combustibles fósiles para movernos e industrializarnos, el aire no mejorará po
 El COVID nos mostró que *sí es posible* respirar mejor —solo que la solución no puede
 ser quedarnos en casa para siempre.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
+
 
 # ─── CONCLUSIONES ─────────────────────────────────────────────────────────────
 
 st.markdown("## Conclusiones")
 
-st.markdown('<div class="narr">', unsafe_allow_html=True)
 st.markdown("""
 Los datos responden a nuestra pregunta con matices importantes:
 
@@ -630,9 +549,9 @@ el rebote post-COVID fue rápido y completo.
 La conclusión es incómoda: **el aire mejora cuando paramos, y empeora cuando arrancamos**.
 La pregunta de política pública ya no es técnica —es de voluntad colectiva.
 """)
-st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
+
 
 # ─── PIE DE PÁGINA ────────────────────────────────────────────────────────────
 
