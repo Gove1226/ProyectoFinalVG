@@ -88,13 +88,6 @@ st.markdown("""
     font-size: 0.82rem; color: #888; margin-top: 50px;
     border-top: 1px solid #333; padding-top: 14px;
   }
-  .tag {
-    display: inline-block; background: #fde8d8;
-    color: #FF6B35; border-radius: 4px;
-    padding: 4px 12px; font-size: 0.85rem; font-weight: 600;
-    white-space: nowrap;
-    margin-bottom: 12px;
-  }
 </style>
 """, unsafe_allow_html=True)
 
