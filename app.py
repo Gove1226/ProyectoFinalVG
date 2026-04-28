@@ -146,7 +146,7 @@ La respuesta es más interesante de lo que parece.
 """)
 
 m1, m2, m3 = st.columns(3)
-m1.metric("Estaciones analizadas", "47")
+m1.metric("Estaciones analizadas", "  47")
 m2.metric("Período cubierto", "2019 – 2024")
 m3.metric("Zonas metropolitanas", "3 ciudades")
 
@@ -225,13 +225,14 @@ fig1 = go.Figure(go.Bar(
     texttemplate="%{text:.4g}",
     textposition="outside",
 ))
-fig1.update_yaxes(autorange="reversed", tickfont_size=13)
-fig1.update_xaxes(showgrid=True, gridcolor="#f0f0f0")
+fig1.update_yaxes(autorange="reversed", tickfont_size=13, color="white")
+fig1.update_xaxes(showgrid=True, gridcolor="#333333", color="white")
 fig1.update_layout(
     title=f"Promedio anual de {POLLUTANT_LABELS[poll_s1]} por ciudad — {year_s1}",
-    plot_bgcolor="white",
+    plot_bgcolor="#1e1e1e",
+    paper_bgcolor="#1e1e1e",
+    font=dict(color="white", family="Inter, sans-serif"),
     margin=dict(l=10, r=80, t=50, b=20), height=280,
-    font=dict(family="Inter, sans-serif"),
 )
 
 with col_chart:
@@ -317,7 +318,7 @@ fig2 = go.Figure(go.Heatmap(
     colorscale="Reds",
     text=hover2,
     hovertemplate="%{text}<extra></extra>",
-    colorbar=dict(title=dict(text=unit_s2, side="right")),
+    colorbar=dict(title=dict(text=unit_s2, side="right"), tickfont=dict(color="white"), titlefont=dict(color="white")),
 ))
 
 if not np.all(np.isnan(vals2)):
@@ -333,14 +334,16 @@ if not np.all(np.isnan(vals2)):
 fig2.update_layout(
     title=f"Patrón semanal — {POLLUTANT_LABELS[poll_s2]} en {city_s2}",
     margin=dict(l=10, r=20, t=55, b=40), height=340,
-    font=dict(family="Inter, sans-serif"),
-    yaxis=dict(autorange="reversed"),
+    font=dict(color="white", family="Inter, sans-serif"),
+    paper_bgcolor="#1e1e1e",
+    plot_bgcolor="#1e1e1e",
+    yaxis=dict(autorange="reversed", color="white"),
     xaxis=dict(
         tickvals=["00h", "06h", "12h", "18h", "23h"],
         ticktext=["00h", "06h", "12h", "18h", "23h"],
         title_text="Hora del día",
+        color="white",
     ),
-    plot_bgcolor="white",
 )
 
 st.plotly_chart(fig2, use_container_width=True)
@@ -390,19 +393,21 @@ fig_box = px.box(
 if poll_s3 in NORMAS:
     fig_box.add_hline(
         y=NORMAS[poll_s3],
-        line_dash="dot", line_color="#7f8c8d", line_width=1.5,
+        line_dash="dot", line_color="#aaaaaa", line_width=1.5,
         annotation_text=f"Norma NOM-025: {NORMAS[poll_s3]} {unit_s3}",
         annotation_position="bottom right",
-        annotation=dict(font_size=10, font_color="#7f8c8d"),
+        annotation=dict(font_size=10, font_color="#aaaaaa"),
     )
 
 fig_box.update_layout(
-    plot_bgcolor="white", height=480,
+    plot_bgcolor="#1e1e1e",
+    paper_bgcolor="#1e1e1e",
+    height=480,
     margin=dict(l=10, r=10, t=55, b=40),
-    font=dict(family="Inter, sans-serif"),
+    font=dict(color="white", family="Inter, sans-serif"),
     legend=dict(title_text="Ciudad", orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    xaxis=dict(showgrid=False),
-    yaxis=dict(showgrid=True, gridcolor="#f0f0f0"),
+    xaxis=dict(showgrid=False, color="white"),
+    yaxis=dict(showgrid=True, gridcolor="#333333", color="white"),
     boxmode="group",
 )
 
@@ -487,8 +492,8 @@ else:
         x="2020-03", y=1, xref="x", yref="paper",
         text="← Confinamiento COVID-19 (mar–jun 2020)",
         showarrow=False,
-        font=dict(color="#c0392b", size=11, family="Inter"),
-        bgcolor="rgba(255,240,240,0.85)",
+        font=dict(color="#ff6b6b", size=11, family="Inter"),
+        bgcolor="rgba(60,20,20,0.85)",
         bordercolor="#e74c3c", borderwidth=1, borderpad=4,
         yanchor="bottom", xanchor="left",
     )
@@ -496,21 +501,23 @@ else:
     if poll_s4 in NORMAS:
         fig3.add_hline(
             y=NORMAS[poll_s4],
-            line_dash="dot", line_color="#7f8c8d", line_width=1.5,
+            line_dash="dot", line_color="#aaaaaa", line_width=1.5,
             annotation_text=f"Norma NOM-025: {NORMAS[poll_s4]} {unit_s4}",
             annotation_position="bottom right",
-            annotation=dict(font_size=10, font_color="#7f8c8d"),
+            annotation=dict(font_size=10, font_color="#aaaaaa"),
         )
 
     fig3.update_layout(
-        plot_bgcolor="white", height=450,
+        plot_bgcolor="#1e1e1e",
+        paper_bgcolor="#1e1e1e",
+        height=450,
         margin=dict(l=10, r=10, t=55, b=30),
         hovermode="x unified",
-        font=dict(family="Inter, sans-serif"),
+        font=dict(color="white", family="Inter, sans-serif"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-    fig3.update_xaxes(showgrid=True, gridcolor="#f0f0f0")
-    fig3.update_yaxes(showgrid=True, gridcolor="#f0f0f0")
+    fig3.update_xaxes(showgrid=True, gridcolor="#333333", color="white")
+    fig3.update_yaxes(showgrid=True, gridcolor="#333333", color="white")
 
     st.plotly_chart(fig3, use_container_width=True)
 
