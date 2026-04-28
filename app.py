@@ -91,7 +91,9 @@ st.markdown("""
   .tag {
     display: inline-block; background: #fde8d8;
     color: #FF6B35; border-radius: 4px;
-    padding: 2px 8px; font-size: 0.85rem; font-weight: 600;
+    padding: 4px 12px; font-size: 0.85rem; font-weight: 600;
+    white-space: nowrap;
+    margin-bottom: 12px;
   }
 </style>
 """, unsafe_allow_html=True)
