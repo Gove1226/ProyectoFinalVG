@@ -120,8 +120,6 @@ if not all((PROCESSED_DIR / f"{n}.parquet").exists()
 
 # ─── ENCABEZADO ───────────────────────────────────────────────────────────────
 
-st.markdown('<span class="tag">Calidad del aire · Datos reales SINAICA 2019–2024</span>',
-            unsafe_allow_html=True)
 st.title("¿En qué día de la semana respiramos peor?")
 st.subheader("Patrones temporales de contaminación en CDMX, Monterrey y Guadalajara")
 
