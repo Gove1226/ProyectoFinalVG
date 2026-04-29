@@ -511,7 +511,7 @@ else:
         bordercolor="#e74c3c", borderwidth=1, borderpad=4,
         yanchor="bottom", xanchor="right",
     )
-    )
+    
 
     if poll_s4 in NORMAS:
         fig3.add_hline(
