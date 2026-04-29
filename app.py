@@ -504,7 +504,7 @@ else:
     # Anotación fin emergencia sanitaria
     fig3.add_annotation(
         x="2023-05", y=0.92, xref="x", yref="paper",
-        text="Fin emergencia sanitaria →",
+        text="Fin de pandemia →",
         showarrow=False,
         font=dict(color="#ff6b6b", size=10, family="Inter"),
         bgcolor="rgba(60,20,20,0.85)",
