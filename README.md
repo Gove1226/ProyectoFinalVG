@@ -2,7 +2,7 @@
 ### Patrones de contaminación en las ciudades más sucias de México (2019–2024)
 
 **Autor:** Alexander Góngora Venegas  
-**Curso:** Visualización gráfica para IA – Universidad Iberoamericana León  
+**Materia:** Visualización gráfica para IA – Universidad Iberoamericana León  
 **Profesor:** Dra. Dora Alvarado  
 **Herramienta:** Streamlit + Plotly  
 **Despliegue:** https://proyectofinalvg-ibykcpxbzedy6weeahlyru.streamlit.app/
@@ -23,19 +23,14 @@ el período 2019–2024. La historia sigue cuatro preguntas en orden:
 ## Pregunta de investigación
 
 > **¿Hay patrones temporales claros en la contaminación del aire en las ciudades mexicanas más contaminadas?**  
-> Específicamente: ¿respiramos peor en lunes?
+
 
 ## Fuente de datos
 
 **SINAICA** – Sistema Nacional de Información de la Calidad del Aire  
 Instituto Nacional de Ecología y Cambio Climático (INECC), Gobierno de México  
-🔗 https://sinaica.inecc.gob.mx/  
-📅 Fecha de descarga: abril 2026
-
-> **Nota sobre los datos:** Esta versión del proyecto utiliza datos sintéticos generados con
-> patrones reales documentados por SINAICA (estacionalidad, efectos COVID, variación semanal).
-> Para sustituirlos por datos reales, coloca los CSVs de SINAICA en `data/raw/base de datos VG/` y vuelve a
-> ejecutar `python scripts/data_processing.py`.
+https://sinaica.inecc.gob.mx/  
+Fecha de descarga: abril 2026
 
 ## Estructura del proyecto
 
