@@ -6,7 +6,6 @@ Docente: Dra. Dora Alvarado
 """
 
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -471,24 +470,47 @@ else:
         markers=True,
     )
 
+    # Banda confinamiento estricto (mar-jun 2020)
     fig3.add_vrect(
         x0="2020-03", x1="2020-06",
-        fillcolor="rgba(255,100,100,0.15)", line_width=0, layer="below",
+        fillcolor="rgba(255,100,100,0.25)", line_width=0, layer="below",
     )
+
+    # Banda restricciones parciales (jun 2020-may 2023)
+    fig3.add_vrect(
+        x0="2020-06", x1="2023-05",
+        fillcolor="rgba(255,100,100,0.08)", line_width=0, layer="below",
+    )
+
+    # Línea vertical inicio
     fig3.add_shape(
         type="line",
         x0="2020-03", x1="2020-03", y0=0, y1=1,
         xref="x", yref="paper",
         line=dict(color="rgba(255,255,255,0.6)", width=2, dash="dash"),
     )
+
+    # Anotación inicio confinamiento
     fig3.add_annotation(
         x="2020-03", y=1, xref="x", yref="paper",
-        text="← Confinamiento COVID-19 (mar–jun 2020)",
+        text="← Confinamiento estricto",
         showarrow=False,
-        font=dict(color="#ff6b6b", size=11, family="Inter"),
+        font=dict(color="#ff6b6b", size=10, family="Inter"),
         bgcolor="rgba(60,20,20,0.85)",
         bordercolor="#e74c3c", borderwidth=1, borderpad=4,
         yanchor="bottom", xanchor="left",
+    )
+
+    # Anotación fin emergencia sanitaria
+    fig3.add_annotation(
+        x="2023-05", y=0.92, xref="x", yref="paper",
+        text="Fin emergencia sanitaria →",
+        showarrow=False,
+        font=dict(color="#ff6b6b", size=10, family="Inter"),
+        bgcolor="rgba(60,20,20,0.85)",
+        bordercolor="#e74c3c", borderwidth=1, borderpad=4,
+        yanchor="bottom", xanchor="right",
+    )
     )
 
     if poll_s4 in NORMAS:
