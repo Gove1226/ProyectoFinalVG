@@ -105,4 +105,5 @@ La app quedará disponible en "http://localhost:8501".
 1. Subir el repositorio a GitHub 
 2. Entrar a streamlit e iniciar sesión con GitHub
 3. Crea una nueva app apuntando a "app.py" en la rama "main"
+4. En "Advanced settings" forzar a python 3.12 para evitar errores
 
