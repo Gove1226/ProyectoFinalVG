@@ -5,7 +5,7 @@
 **Materia:** Visualización gráfica para IA – Universidad Iberoamericana León  
 **Profesor:** Dra. Dora Alvarado  
 **Herramienta:** Streamlit + Plotly  
-**Despliegue:** https://proyectofinalvg-ibykcpxbzedy6weeahlyru.streamlit.app/
+**Despliegue:** https://proyecto-final-vg-cuando-respiramos-peor.streamlit.app/
 
 ---
 
